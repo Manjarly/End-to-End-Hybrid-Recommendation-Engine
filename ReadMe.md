@@ -46,8 +46,7 @@ pip install pandas numpy scikit-learn matplotlib seaborn requests
 
 ## **Usage**
 
-To run the complete pipeline including model training, evaluation, and demonstration, execute the main script:  
-python your\_script\_name.py
+To run the complete pipeline including model training, evaluation, and demonstration, open the ipynb file in Google Collab or VS Code and Run in order.
 
 The script will automatically download the dataset, tune the hyperparameters, train the models, display evaluation metrics and graphs, and print out example recommendations.
 
