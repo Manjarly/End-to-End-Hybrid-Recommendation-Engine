@@ -166,20 +166,52 @@ def create_app(dataset_name: str = "ml-latest-small") -> Flask:
         top_n = int(data.get("top_n", 10))
         age_desc = data.get("age_desc")
 
+        exclude_movie_ids = data.get("exclude_movie_ids") or []
+        excl_set = set()
+        for x in exclude_movie_ids:
+            try:
+                excl_set.add(int(x))
+            except (ValueError, TypeError):
+                pass
+        if seed_movie_id is not None:
+            excl_set.add(seed_movie_id)
+
+        # Request extra candidate buffer to account for exclusions
+        query_n = top_n + len(excl_set) + 10
         recs = hybrid.recommend(
             user_id=user_id,
-            n=top_n,
+            n=query_n,
             seed_movie_id=seed_movie_id,
             alpha=alpha,
             strategy=strategy,
             age_desc=age_desc,
             apply_diversity=apply_diversity,
+            exclude_movie_ids=excl_set,
         )
 
+        active_seed = None
+        if seed_movie_id is not None:
+            s_title = dataset.movie_id_to_title.get(seed_movie_id, "Unknown")
+            s_genres = [g for g in dataset.movie_id_to_genres.get(seed_movie_id, "").split("|") if g]
+            s_rows = dataset.movies[dataset.movies["movie_id"] == seed_movie_id]
+            s_year = None
+            if not s_rows.empty:
+                s_yr_val = s_rows.iloc[0].get("year")
+                s_year = int(s_yr_val) if pd.notnull(s_yr_val) else None
+            active_seed = {
+                "movie_id": int(seed_movie_id),
+                "title": str(s_title),
+                "year": s_year,
+                "genres": s_genres,
+            }
+
         cards = []
-        for rank, (mid, score) in enumerate(recs, 1):
+        rank_counter = 1
+        for mid, score in recs:
+            if mid in excl_set:
+                continue
             title = dataset.movie_id_to_title.get(mid, "Unknown")
-            genres = dataset.movie_id_to_genres.get(mid, "").split("|")
+            genres = [g for g in dataset.movie_id_to_genres.get(mid, "").split("|") if g]
             movie_rows = dataset.movies[dataset.movies["movie_id"] == mid]
             year = None
             b_rating = 4.0
@@ -197,7 +229,7 @@ def create_app(dataset_name: str = "ml-latest-small") -> Flask:
             )
 
             cards.append({
-                "rank": int(rank),
+                "rank": int(rank_counter),
                 "movie_id": int(mid),
                 "title": str(title),
                 "year": int(year) if year is not None else None,
@@ -211,10 +243,14 @@ def create_app(dataset_name: str = "ml-latest-small") -> Flask:
                 "reason": explanation["reason"],
                 "highlight": explanation["highlight"],
             })
+            rank_counter += 1
+            if len(cards) >= top_n:
+                break
 
         return jsonify(sanitize_json({
             "user_id": user_id,
             "seed_movie_id": seed_movie_id,
+            "active_seed": active_seed,
             "alpha": alpha,
             "strategy": strategy,
             "apply_diversity": apply_diversity,

@@ -7,7 +7,7 @@ Integrates:
 4. Diversity-Aware Maximal Marginal Relevance (MMR) Re-Ranking
 """
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 import numpy as np
 import pandas as pd
 from .base import BaseRecommender
@@ -68,6 +68,7 @@ class HybridRecommender(BaseRecommender):
         strategy: Optional[str] = None,
         age_desc: Optional[str] = None,
         apply_diversity: bool = False,
+        exclude_movie_ids: Optional[Iterable[int]] = None,
         **kwargs,
     ) -> List[Tuple[int, float]]:
         """
@@ -82,6 +83,13 @@ class HybridRecommender(BaseRecommender):
         rated = self.dataset.user_train_rated.get(user_id, set()) if exclude_rated else set()
         user_rating_count = len(rated)
 
+        # Build comprehensive exclusion set (rated movies, seed movie, and journey trail history)
+        exclude_set: Set[int] = set(rated)
+        if seed_movie_id is not None:
+            exclude_set.add(seed_movie_id)
+        if exclude_movie_ids:
+            exclude_set.update(int(x) for x in exclude_movie_ids)
+
         # -------------------------------------------------------------
         # 1. Cold-Start Handling (User has 0 ratings)
         # -------------------------------------------------------------
@@ -91,6 +99,7 @@ class HybridRecommender(BaseRecommender):
                 n=n,
                 seed_movie_id=seed_movie_id,
                 age_desc=age_desc,
+                exclude_movie_ids=exclude_set,
             )
 
         # -------------------------------------------------------------
@@ -101,6 +110,11 @@ class HybridRecommender(BaseRecommender):
             effective_alpha = alpha_val * (user_rating_count / 5.0)
         else:
             effective_alpha = alpha_val
+
+        # When a reference seed film is specified for exploration, prioritize content kinship
+        # with the seed while retaining collaborative filtering as a personalized ranking signal
+        if seed_movie_id is not None:
+            effective_alpha = min(effective_alpha * 0.35, 0.25)
 
         # -------------------------------------------------------------
         # 3. Retrieve Candidate Pool from Models
@@ -129,8 +143,11 @@ class HybridRecommender(BaseRecommender):
             # Reciprocal Rank Fusion (RRF)
             final_scores = self._reciprocal_rank_fusion(cf_recs, cb_recs, effective_alpha, demo_recs=demo_recs)
 
-        # Filter already rated
-        ranked_items = [(mid, score) for mid, score in final_scores if mid not in rated]
+        # Filter already rated, seed movie, and any discovery graph history
+        ranked_items = [
+            (mid, score) for mid, score in final_scores
+            if mid not in exclude_set
+        ]
 
         if apply_diversity:
             ranked_items = self._apply_mmr_diversity(ranked_items, n)
@@ -145,29 +162,35 @@ class HybridRecommender(BaseRecommender):
         n: int,
         seed_movie_id: Optional[int] = None,
         age_desc: Optional[str] = None,
+        exclude_movie_ids: Optional[Set[int]] = None,
         **kwargs,
     ) -> List[Tuple[int, float]]:
         """Handles new users who have not rated any movies yet."""
         has_demo = bool(age_desc and str(age_desc).strip())
+        excl: Set[int] = set(exclude_movie_ids) if exclude_movie_ids else set()
+        if seed_movie_id is not None:
+            excl.add(seed_movie_id)
 
         # Case A: User picked a reference film
         if seed_movie_id is not None:
-            cb_sims = self.cb_model.get_similar_movies(seed_movie_id, top_n=n * 3)
+            cb_sims = self.cb_model.get_similar_movies(seed_movie_id, top_n=n * 4)
+            cb_sims = [(mid, s) for mid, s in cb_sims if mid not in excl]
             if has_demo:
-                demo_recs = self.demographic_model.recommend(user_id, n=n * 3, age_desc=age_desc)
+                demo_recs = self.demographic_model.recommend(user_id, n=n * 4, age_desc=age_desc)
                 if demo_recs:
                     fused = self._reciprocal_rank_fusion(cf_recs=[], cb_recs=cb_sims, alpha=0.0, demo_recs=demo_recs)
-                    return fused[:n]
-            return [(mid, float(s)) for mid, s in cb_sims[:n]]
+                    return [(mid, s) for mid, s in fused if mid not in excl][:n]
+            return [(mid, float(s)) for mid, s in cb_sims if mid not in excl][:n]
 
         # Case B: Demographic profile selected (Age Group)
         if has_demo or user_id in self.demographic_model.user_demographics:
-            demo_recs = self.demographic_model.recommend(user_id, n=n, age_desc=age_desc)
+            demo_recs = self.demographic_model.recommend(user_id, n=n * 2, age_desc=age_desc)
             if demo_recs:
-                return demo_recs
+                return [(mid, s) for mid, s in demo_recs if mid not in excl][:n]
 
         # Case C: Global Bayesian Popularity
-        return self.popularity_model.recommend(user_id, n=n)
+        pop_recs = self.popularity_model.recommend(user_id, n=n * 2)
+        return [(mid, s) for mid, s in pop_recs if mid not in excl][:n]
 
     def _reciprocal_rank_fusion(
         self,

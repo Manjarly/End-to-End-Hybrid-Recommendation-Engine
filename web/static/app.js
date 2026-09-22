@@ -1,6 +1,7 @@
 /**
  * The Film Archive - Client Application
- * Clean, accessible film catalog interface.
+ * Clean, accessible film catalog interface with sequential click-to-explore recommendations
+ * and interactive Discovery Journey Graph.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     discoveryMode: 'balanced',
     broadenVariety: false,
     selectedAgeDesc: '25-34',
+    journeyTrail: [],
   };
 
   // DOM Elements
@@ -34,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
   const catalogSubtitle = document.getElementById('catalog-subtitle');
   const resultsCountBadge = document.getElementById('results-count-badge');
+
+  const discoveryJourneySection = document.getElementById('discovery-journey-section');
+  const journeyGraphContainer = document.getElementById('journey-graph-container');
+  const resetJourneyBtn = document.getElementById('reset-journey-btn');
 
   function updateDemographicIndicator() {
     if (!demographicIndicator) return;
@@ -94,6 +100,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const uid = parseInt(e.target.value, 10);
     const profile = state.personas.find(p => p.user_id === uid);
     if (profile) {
+      state.selectedAnchorMovie = null;
+      state.journeyTrail = [];
+      activeAnchorBox.classList.add('hidden');
+      renderJourneyGraph();
       updateProfileDetails(profile);
       fetchRecommendations();
     }
@@ -137,9 +147,23 @@ document.addEventListener('DOMContentLoaded', () => {
           el.addEventListener('click', () => {
             const mid = parseInt(el.getAttribute('data-id'), 10);
             const mtitle = el.getAttribute('data-title');
-            setAnchorFilm(mid, mtitle);
+            const foundObj = movies.find(m => m.movie_id === mid);
+            const myear = foundObj ? foundObj.year : null;
+            const mgenres = foundObj ? foundObj.genres : [];
+
+            setAnchorFilm(mid, mtitle, myear, mgenres);
+            // Initialize journey trail with searched movie
+            state.journeyTrail = [{
+              id: mid,
+              title: mtitle,
+              year: myear,
+              genres: mgenres,
+            }];
+
             filmSearchResults.classList.add('hidden');
             filmSearchInput.value = '';
+            renderJourneyGraph();
+            fetchRecommendations();
           });
         });
       } catch (err) {
@@ -154,16 +178,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  function setAnchorFilm(id, title) {
-    state.selectedAnchorMovie = { id, title };
+  function setAnchorFilm(id, title, year = null, genres = []) {
+    state.selectedAnchorMovie = { id, title, year, genres };
     activeAnchorTitle.textContent = title;
     activeAnchorBox.classList.remove('hidden');
   }
 
-  clearAnchorBtn.addEventListener('click', () => {
+  function clearAnchorAndJourney() {
     state.selectedAnchorMovie = null;
+    state.journeyTrail = [];
     activeAnchorBox.classList.add('hidden');
-  });
+    renderJourneyGraph();
+    fetchRecommendations();
+  }
+
+  clearAnchorBtn.addEventListener('click', clearAnchorAndJourney);
+  if (resetJourneyBtn) {
+    resetJourneyBtn.addEventListener('click', clearAnchorAndJourney);
+  }
 
   // 4. Discovery Mode & Options
   curationStyleSelect.addEventListener('change', (e) => {
@@ -194,9 +226,16 @@ document.addEventListener('DOMContentLoaded', () => {
         strategy = 'rrf';
       }
 
+      // Gather all movie IDs currently in the exploration trail to prevent recommendation loops
+      const trailIds = (state.journeyTrail || []).map(t => t.id).filter(Boolean);
+      if (state.selectedAnchorMovie && !trailIds.includes(state.selectedAnchorMovie.id)) {
+        trailIds.push(state.selectedAnchorMovie.id);
+      }
+
       const payload = {
         user_id: state.selectedUserId,
         seed_movie_id: state.selectedAnchorMovie ? state.selectedAnchorMovie.id : null,
+        exclude_movie_ids: trailIds,
         alpha: alpha,
         strategy: strategy,
         apply_diversity: state.broadenVariety,
@@ -211,11 +250,24 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       const data = await res.json();
+
+      // If backend returned active seed details, synchronize with current anchor and journey node
+      if (data.active_seed && state.selectedAnchorMovie) {
+        state.selectedAnchorMovie.year = data.active_seed.year;
+        state.selectedAnchorMovie.genres = data.active_seed.genres;
+        const trailNode = state.journeyTrail.find(t => t.id === data.active_seed.movie_id);
+        if (trailNode) {
+          trailNode.year = data.active_seed.year;
+          trailNode.genres = data.active_seed.genres;
+        }
+      }
+
       renderFilmList(data.recommendations);
+      renderJourneyGraph();
 
       const demoText = state.selectedAgeDesc ? `viewers aged ${state.selectedAgeDesc}` : 'all audiences';
       if (state.selectedAnchorMovie) {
-        catalogSubtitle.textContent = `Curated for preferences anchored on "${state.selectedAnchorMovie.title}" (${demoText})`;
+        catalogSubtitle.textContent = `Curated for preferences branching from "${state.selectedAnchorMovie.title}" (${demoText})`;
       } else {
         catalogSubtitle.textContent = `Curated selections for ${activeProfile.label || 'current profile'} (${demoText})`;
       }
@@ -230,16 +282,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // 6. Render Film List with Click-to-Explore Interaction
   function renderFilmList(items) {
     if (!items || items.length === 0) {
       filmsList.innerHTML = `<div class="film-entry" style="grid-template-columns: 1fr;">No titles matched the selected criteria.</div>`;
       return;
     }
 
-    filmsList.innerHTML = items.map(item => {
+    filmsList.innerHTML = items.map((item, index) => {
       const padRank = item.rank < 10 ? `0${item.rank}` : `${item.rank}`;
       return `
-        <article class="film-entry">
+        <article class="film-entry clickable" data-index="${index}" title="Click to explore recommendations based on ${item.title}">
           <div class="film-number">${padRank}</div>
           <div class="film-body">
             <div class="film-title-row">
@@ -248,6 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="film-genres">${item.genres.join(' / ')}</div>
             <p class="film-curator-note">${item.reason}</p>
+            <div class="film-explore-action">
+              <span>Explore from this film</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </div>
           </div>
           <div class="film-side">
             <span class="curator-tag">${item.badge}</span>
@@ -256,6 +316,115 @@ document.addEventListener('DOMContentLoaded', () => {
         </article>
       `;
     }).join('');
+
+    // Attach click listeners to dynamically refresh recommendations on clicked film
+    document.querySelectorAll('.film-entry.clickable').forEach(entry => {
+      entry.addEventListener('click', () => {
+        const idx = parseInt(entry.getAttribute('data-index'), 10);
+        const item = items[idx];
+        if (!item) return;
+
+        // If journey trail was empty, add previous anchor first if present
+        if (state.journeyTrail.length === 0 && state.selectedAnchorMovie) {
+          state.journeyTrail.push(state.selectedAnchorMovie);
+        }
+
+        // Check if item already exists in trail
+        const existingIdx = state.journeyTrail.findIndex(t => t.id === item.movie_id);
+        if (existingIdx !== -1) {
+          state.journeyTrail = state.journeyTrail.slice(0, existingIdx + 1);
+        } else {
+          state.journeyTrail.push({
+            id: item.movie_id,
+            title: item.title,
+            year: item.year,
+            genres: item.genres,
+          });
+        }
+
+        setAnchorFilm(item.movie_id, item.title, item.year, item.genres);
+        renderJourneyGraph();
+        fetchRecommendations();
+
+        // Smooth scroll to catalog header
+        const catalogHeader = document.querySelector('.catalog-header');
+        if (catalogHeader) {
+          catalogHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  }
+
+  // 7. Render Discovery Journey Graph
+  function renderJourneyGraph() {
+    if (!discoveryJourneySection || !journeyGraphContainer) return;
+
+    if (!state.journeyTrail || state.journeyTrail.length === 0) {
+      discoveryJourneySection.classList.add('hidden');
+      journeyGraphContainer.innerHTML = '';
+      return;
+    }
+
+    discoveryJourneySection.classList.remove('hidden');
+
+    const htmlParts = [];
+    state.journeyTrail.forEach((node, index) => {
+      const stepNum = index < 9 ? `0${index + 1}` : `${index + 1}`;
+      const isActive = state.selectedAnchorMovie && state.selectedAnchorMovie.id === node.id;
+      const genresSummary = (node.genres && node.genres.length > 0)
+        ? node.genres.slice(0, 2).join(' / ')
+        : (node.year ? `${node.year}` : 'Archive Film');
+
+      htmlParts.push(`
+        <div class="journey-node ${isActive ? 'active' : ''}" data-step="${index}" data-id="${node.id}" title="Click to branch recommendations from ${node.title}">
+          <div class="journey-node-step">
+            <span>Step ${stepNum}</span>
+            ${isActive ? '<span class="journey-node-status">Active</span>' : ''}
+          </div>
+          <div class="journey-node-title">${node.title}</div>
+          <div class="journey-node-meta">${node.year ? `${node.year} · ` : ''}${genresSummary}</div>
+        </div>
+      `);
+
+      if (index < state.journeyTrail.length - 1) {
+        htmlParts.push(`
+          <div class="journey-connector" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </div>
+        `);
+      }
+    });
+
+    journeyGraphContainer.innerHTML = htmlParts.join('');
+
+    // Attach click events on journey nodes for jump-back navigation
+    journeyGraphContainer.querySelectorAll('.journey-node').forEach(nodeEl => {
+      nodeEl.addEventListener('click', () => {
+        const step = parseInt(nodeEl.getAttribute('data-step'), 10);
+        const targetNode = state.journeyTrail[step];
+        if (!targetNode) return;
+
+        // If clicking already active anchor, do not redundant fetch
+        if (state.selectedAnchorMovie && state.selectedAnchorMovie.id === targetNode.id) return;
+
+        // Jump back to this step in the trail
+        state.journeyTrail = state.journeyTrail.slice(0, step + 1);
+        setAnchorFilm(targetNode.id, targetNode.title, targetNode.year, targetNode.genres);
+        renderJourneyGraph();
+        fetchRecommendations();
+
+        const catalogHeader = document.querySelector('.catalog-header');
+        if (catalogHeader) {
+          catalogHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // Auto-scroll graph container to show the newest node
+    journeyGraphContainer.scrollLeft = journeyGraphContainer.scrollWidth;
   }
 
   submitBtn.addEventListener('click', fetchRecommendations);
