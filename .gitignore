@@ -1,0 +1,20 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Data Cache
+data/*.zip
+data/ml-1m/
+data/ml-latest-small/
+data/ml-100k/
+
+# VS Code / IDE
+.vscode/
+.DS_Store
