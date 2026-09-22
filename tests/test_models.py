@@ -112,3 +112,7 @@ def test_hybrid_recommender(mock_dataset):
     # 4. Demographic hybrid recommendation (Age group)
     recs_demo = hybrid.recommend(999, n=3, age_desc="25-34")
     assert len(recs_demo) <= 3
+
+    # 5. Exclude previous journey trail movies
+    recs_excl = hybrid.recommend(1, n=3, exclude_movie_ids=[3, 4, 5])
+    assert not any(m in [3, 4, 5] for m, _ in recs_excl)

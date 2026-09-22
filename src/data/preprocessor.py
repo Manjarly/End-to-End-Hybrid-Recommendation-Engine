@@ -226,11 +226,12 @@ class DataPreprocessor:
         movies["popularity_score"] = np.log1p(movies["rating_count"]) * movies["bayesian_rating"]
 
         # Default tag string and metadata soup
+        # Weight genres 3x so semantic genre and thematic kinship dominate title words
         movies["tags"] = ""
+        genre_tokens = movies["genres"].str.replace("|", " ", regex=False)
         movies["metadata_soup"] = (
-            movies["clean_title"]
-            + " "
-            + movies["genres"].str.replace("|", " ", regex=False)
+            (genre_tokens + " ") * 3
+            + movies["clean_title"]
             + " "
             + movies["decade"]
         )
@@ -285,13 +286,13 @@ class DataPreprocessor:
             merged["tags"] = merged["tag"].fillna("")
             merged.drop(columns=["norm_title", "tag"], inplace=True)
 
-            # Update metadata soup with rich tags
+            # Update metadata soup with rich tags (weight genres 3x and user tags 2x)
+            genre_tokens = merged["genres"].str.replace("|", " ", regex=False)
+            tag_tokens = merged["tags"].apply(lambda t: (str(t).strip() + " ") if str(t).strip() else "")
             merged["metadata_soup"] = (
-                merged["clean_title"]
-                + " "
-                + merged["genres"].str.replace("|", " ", regex=False)
-                + " "
-                + merged["tags"]
+                (genre_tokens + " ") * 3
+                + (tag_tokens * 2)
+                + merged["clean_title"]
                 + " "
                 + merged["decade"]
             )
