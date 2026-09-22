@@ -16,5 +16,6 @@ data/ml-latest-small/
 data/ml-100k/
 
 # VS Code / IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .DS_Store
