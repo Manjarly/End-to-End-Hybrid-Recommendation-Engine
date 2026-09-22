@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Film Archive: Curated Movie Recommendations</title>
+  <meta name="description" content="A curated film discovery catalog providing personalized movie recommendations based on viewing history and cinematic preferences.">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="site-wrapper">
+    <!-- Header -->
+    <header class="site-header">
+      <div class="header-container">
+        <div class="site-title-area">
+          <h1 class="site-title">The Film Archive</h1>
+          <p class="site-subtitle">Curated cinema discovery and recommendation catalog</p>
+        </div>
+        <div class="header-meta">
+          <span class="meta-label">Archive Collection</span>
+          <span class="meta-value">3,883 Films / 1,000,209 Community Reviews</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-layout">
+      <div class="content-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar-panel">
+          <div class="panel-block">
+            <h2 class="panel-heading">Viewer Profile</h2>
+            <div class="field-group">
+              <label for="persona-select" class="field-label">Select Taste Profile</label>
+              <select id="persona-select" class="input-select"></select>
+            </div>
+
+            <div class="field-group">
+              <label for="age-select" class="field-label">Age Group</label>
+              <select id="age-select" class="input-select">
+                <option value="">All Ages</option>
+                <option value="Under 18">Under 18</option>
+                <option value="18-24">18 to 24</option>
+                <option value="25-34" selected>25 to 34</option>
+                <option value="35-44">35 to 44</option>
+                <option value="45-49">45 to 49</option>
+                <option value="50-55">50 to 55</option>
+                <option value="56+">56 and older</option>
+              </select>
+            </div>
+
+            <div id="viewer-profile-box" class="profile-box">
+              <div class="profile-meta-row">
+                <span id="demographic-indicator" class="demographic-indicator">Selected Age Group: 25 to 34</span>
+              </div>
+              <p id="profile-bio" class="profile-bio">Loading profile details...</p>
+              <div class="favorites-container">
+                <span class="favorites-label">Key Taste References in Collection:</span>
+                <div id="favorites-list" class="favorites-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-block">
+            <h2 class="panel-heading">Reference a Film</h2>
+            <p class="field-hint">Optional: Anchor your recommendations on a specific movie you appreciate.</p>
+            <div class="search-wrapper">
+              <input type="text" id="film-search-input" class="input-text" placeholder="Search archive (e.g. Toy Story, Heat, Star Wars)..." autocomplete="off">
+              <div id="film-search-results" class="search-results hidden"></div>
+            </div>
+            <div id="active-anchor-box" class="anchor-box hidden">
+              <span class="anchor-text">Anchored on: <strong id="active-anchor-title"></strong></span>
+              <button id="clear-anchor-btn" class="text-button" type="button">Remove</button>
+            </div>
+          </div>
+
+          <div class="panel-block">
+            <h2 class="panel-heading">Curatorial Preference</h2>
+
+            <div class="field-group">
+              <label for="curation-style-select" class="field-label">Discovery Mode</label>
+              <select id="curation-style-select" class="input-select">
+                <option value="balanced" selected>Balanced Discovery (Recommended)</option>
+                <option value="story_match">Direct Story and Tone Matches</option>
+                <option value="crowd_favorites">Broad Audience Favorites</option>
+              </select>
+            </div>
+
+            <div class="field-group checkbox-group">
+              <label class="custom-checkbox-label">
+                <input type="checkbox" id="variety-checkbox">
+                <span>Broaden genre variety (encourage eclectic suggestions)</span>
+              </label>
+            </div>
+
+            <button id="submit-recommendations-btn" class="primary-button" type="button">
+              Update Recommendations
+            </button>
+          </div>
+        </aside>
+
+        <!-- Recommendations Showcase -->
+        <section class="catalog-panel">
+          <div class="catalog-header">
+            <div>
+              <h2 class="catalog-title">Recommended Selections</h2>
+              <p id="catalog-subtitle" class="catalog-subtitle">Personalized titles matching your viewing taste</p>
+            </div>
+            <div class="catalog-badge-box">
+              <span id="results-count-badge" class="catalog-pill">10 Titles Selected</span>
+            </div>
+          </div>
+
+          <div id="loading-indicator" class="loading-state hidden">
+            <p>Consulting catalog index and matching viewing affinities...</p>
+          </div>
+
+          <div id="films-list" class="films-list">
+            <!-- Dynamically populated film rows -->
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="footer-container">
+        <span>The Film Archive. Curated recommendation directory built on MovieLens 1M.</span>
+        <span>Standard Film Classification and Editorial Notes.</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
